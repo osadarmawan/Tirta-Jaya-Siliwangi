@@ -2,9 +2,11 @@ import React, { useState, useRef } from 'react';
 import { 
   Settings, Droplet, Users, Bell, Shield, CreditCard, Save, 
   Smartphone, Key, Lock, LogOut, Plus, Edit2, Trash2, CheckCircle2, 
-  XCircle, Upload, Server, Download, X, Building
+  XCircle, Upload, Server, Download, X, Building, FileSpreadsheet, UploadCloud,
+  Loader2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import * as XLSX from 'xlsx';
 import CurrencyInput from '../components/CurrencyInput';
 import { useSettings } from '../context/SettingsContext';
 
@@ -82,6 +84,74 @@ export default function SettingsView() {
     }
   };
 
+  const [isExporting, setIsExporting] = useState<string | null>(null);
+  const [isImporting, setIsImporting] = useState<string | null>(null);
+
+  const handleExportData = (type: 'tagihan' | 'warga' | 'catatan') => {
+    setIsExporting(type);
+    
+    setTimeout(() => {
+      let data: any[] = [];
+      let fileName = '';
+      let sheetName = '';
+
+      if (type === 'tagihan') {
+        data = [
+          { id: 'INV-2603-001', name: 'Budi Santoso', block: 'A-01', amount: 125000, status: 'Lunas', date: '05 Mar 2026' },
+          { id: 'INV-2603-002', name: 'Siti Aminah', block: 'A-02', amount: 95000, status: 'Belum Bayar', date: '05 Mar 2026' },
+          { id: 'INV-2603-003', name: 'Toko Makmur', block: 'B-01', amount: 450000, status: 'Terlambat', date: '05 Mar 2026' },
+        ];
+        fileName = `Backup_Tagihan_${new Date().toISOString().split('T')[0]}.xlsx`;
+        sheetName = 'Tagihan';
+      } else if (type === 'warga') {
+        data = [
+          { id: 1, name: 'Budi Santoso', block: 'A-01', phone: '081234567890', status: 'Aktif' },
+          { id: 2, name: 'Siti Aminah', block: 'A-02', phone: '081234567891', status: 'Aktif' },
+          { id: 3, name: 'Ahmad Dahlan', block: 'C-12', phone: '081234567892', status: 'Non-Aktif' },
+        ];
+        fileName = `Backup_Data_Warga_${new Date().toISOString().split('T')[0]}.xlsx`;
+        sheetName = 'Data Warga';
+      } else if (type === 'catatan') {
+        data = [
+          { date: '2026-03-01', block: 'A-01', lastMeter: 120, currentMeter: 145, usage: 25 },
+          { date: '2026-03-01', block: 'A-02', lastMeter: 85, currentMeter: 102, usage: 17 },
+        ];
+        fileName = `Backup_Catatan_Meter_${new Date().toISOString().split('T')[0]}.xlsx`;
+        sheetName = 'Catatan Meter';
+      }
+
+      const ws = XLSX.utils.json_to_sheet(data);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, sheetName);
+      XLSX.writeFile(wb, fileName);
+      setIsExporting(null);
+    }, 1500);
+  };
+
+  const handleImportData = (type: 'tagihan' | 'warga' | 'catatan', e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsImporting(type);
+    
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      const bstr = evt.target?.result;
+      const wb = XLSX.read(bstr, { type: 'binary' });
+      const wsname = wb.SheetNames[0];
+      const ws = wb.Sheets[wsname];
+      const data = XLSX.utils.sheet_to_json(ws);
+      
+      console.log(`Imported ${type} data:`, data);
+      
+      setTimeout(() => {
+        setIsImporting(null);
+        alert(`Berhasil mengimpor ${data.length} data ${type}!`);
+        if (e.target) e.target.value = '';
+      }, 1500);
+    };
+    reader.readAsBinaryString(file);
+  };
   const handleAddBank = () => {
     if (!newBank.number || !newBank.name) return;
     const colorMap: Record<string, { text: string, bg: string }> = { 
@@ -593,14 +663,86 @@ export default function SettingsView() {
             </div>
 
             <div className="glass-card p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-lg font-heading font-bold text-[#1A237E]">Backup Database</h3>
-                  <p className="text-sm text-gray-500 mt-1">Unduh seluruh data warga dan riwayat tagihan sebagai cadangan.</p>
+              <div className="mb-6">
+                <h3 className="text-lg font-heading font-bold text-[#1A237E]">Backup Database</h3>
+                <p className="text-sm text-gray-500 mt-1">Kelola ekspor dan impor data sistem dalam format Excel (.xls).</p>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {/* Tagihan Card */}
+                <div className="p-4 border border-gray-100 rounded-2xl bg-gray-50/50 space-y-4">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-blue-100 text-blue-600 rounded-lg">
+                      <CreditCard className="w-5 h-5" />
+                    </div>
+                    <span className="font-bold text-gray-800">Data Tagihan</span>
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    <button 
+                      onClick={() => handleExportData('tagihan')}
+                      disabled={!!isExporting}
+                      className="flex items-center justify-center gap-2 px-3 py-2 bg-white border border-gray-200 text-[#1A237E] rounded-xl text-sm font-medium hover:bg-gray-50 transition-colors disabled:opacity-50"
+                    >
+                      {isExporting === 'tagihan' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+                      Export .xls
+                    </button>
+                    <label className="flex items-center justify-center gap-2 px-3 py-2 bg-[#1A237E] text-white rounded-xl text-sm font-medium hover:bg-[#283593] transition-colors cursor-pointer">
+                      {isImporting === 'tagihan' ? <Loader2 className="w-4 h-4 animate-spin" /> : <UploadCloud className="w-4 h-4" />}
+                      Import .xls
+                      <input type="file" accept=".xlsx, .xls" className="hidden" onChange={(e) => handleImportData('tagihan', e)} />
+                    </label>
+                  </div>
                 </div>
-                <button className="flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-200 text-[#1A237E] rounded-xl font-medium hover:bg-gray-50 transition-colors">
-                  <Download className="w-5 h-5" /> Export Data (.xls)
-                </button>
+
+                {/* Data Warga Card */}
+                <div className="p-4 border border-gray-100 rounded-2xl bg-gray-50/50 space-y-4">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-emerald-100 text-emerald-600 rounded-lg">
+                      <Users className="w-5 h-5" />
+                    </div>
+                    <span className="font-bold text-gray-800">Data Warga</span>
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    <button 
+                      onClick={() => handleExportData('warga')}
+                      disabled={!!isExporting}
+                      className="flex items-center justify-center gap-2 px-3 py-2 bg-white border border-gray-200 text-[#1A237E] rounded-xl text-sm font-medium hover:bg-gray-50 transition-colors disabled:opacity-50"
+                    >
+                      {isExporting === 'warga' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+                      Export .xls
+                    </button>
+                    <label className="flex items-center justify-center gap-2 px-3 py-2 bg-[#1A237E] text-white rounded-xl text-sm font-medium hover:bg-[#283593] transition-colors cursor-pointer">
+                      {isImporting === 'warga' ? <Loader2 className="w-4 h-4 animate-spin" /> : <UploadCloud className="w-4 h-4" />}
+                      Import .xls
+                      <input type="file" accept=".xlsx, .xls" className="hidden" onChange={(e) => handleImportData('warga', e)} />
+                    </label>
+                  </div>
+                </div>
+
+                {/* Catatan Meter Card */}
+                <div className="p-4 border border-gray-100 rounded-2xl bg-gray-50/50 space-y-4">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-orange-100 text-orange-600 rounded-lg">
+                      <FileSpreadsheet className="w-5 h-5" />
+                    </div>
+                    <span className="font-bold text-gray-800">Catatan Meter</span>
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    <button 
+                      onClick={() => handleExportData('catatan')}
+                      disabled={!!isExporting}
+                      className="flex items-center justify-center gap-2 px-3 py-2 bg-white border border-gray-200 text-[#1A237E] rounded-xl text-sm font-medium hover:bg-gray-50 transition-colors disabled:opacity-50"
+                    >
+                      {isExporting === 'catatan' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+                      Export .xls
+                    </button>
+                    <label className="flex items-center justify-center gap-2 px-3 py-2 bg-[#1A237E] text-white rounded-xl text-sm font-medium hover:bg-[#283593] transition-colors cursor-pointer">
+                      {isImporting === 'catatan' ? <Loader2 className="w-4 h-4 animate-spin" /> : <UploadCloud className="w-4 h-4" />}
+                      Import .xls
+                      <input type="file" accept=".xlsx, .xls" className="hidden" onChange={(e) => handleImportData('catatan', e)} />
+                    </label>
+                  </div>
+                </div>
               </div>
             </div>
           </motion.div>

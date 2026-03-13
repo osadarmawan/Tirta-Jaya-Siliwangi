@@ -17,7 +17,6 @@ export default function Billing() {
   const { settings } = useSettings();
   const [activeTab, setActiveTab] = useState('Semua');
   const [searchTerm, setSearchTerm] = useState('');
-  const [isExporting, setIsExporting] = useState(false);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [sendingWAId, setSendingWAId] = useState<string | null>(null);
 
@@ -31,44 +30,6 @@ export default function Billing() {
     return matchesTab && matchesSearch;
   });
 
-  const handleExportExcel = () => {
-    setIsExporting(true);
-    
-    // Simulate professional loading delay
-    setTimeout(() => {
-      // Prepare data for Excel
-      const exportData = filteredInvoices.map((inv, index) => ({
-        'No': index + 1,
-        'No. Invoice': inv.id,
-        'Tanggal': inv.date,
-        'Nama Warga': inv.name,
-        'Blok': inv.block,
-        'Total Tagihan (Rp)': inv.amount,
-        'Status': inv.status
-      }));
-
-      // Create workbook and worksheet
-      const worksheet = XLSX.utils.json_to_sheet(exportData);
-      const workbook = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(workbook, worksheet, 'Data Tagihan');
-
-      // Adjust column widths
-      const wscols = [
-        { wch: 5 },  // No
-        { wch: 15 }, // No. Invoice
-        { wch: 15 }, // Tanggal
-        { wch: 25 }, // Nama Warga
-        { wch: 10 }, // Blok
-        { wch: 20 }, // Total Tagihan
-        { wch: 15 }, // Status
-      ];
-      worksheet['!cols'] = wscols;
-
-      // Generate Excel file and trigger download
-      XLSX.writeFile(workbook, `Laporan_Tagihan_${settings.appName.replace(/\s+/g, '_')}_${activeTab}.xlsx`);
-      setIsExporting(false);
-    }, 1000);
-  };
 
   const handleDownloadPDF = (inv: typeof mockInvoices[0]) => {
     setDownloadingId(inv.id);
@@ -173,18 +134,6 @@ Abaikan pesan ini jika Anda sudah melakukan pembayaran. Terima kasih.`;
           <p className="text-gray-500 mt-1">Kelola tagihan air warga periode Maret 2026.</p>
         </div>
         <div className="flex gap-2 w-full sm:w-auto">
-          <button 
-            onClick={handleExportExcel}
-            disabled={isExporting}
-            className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2.5 bg-white border border-gray-200 text-[#1A237E] rounded-xl hover:bg-gray-50 transition-colors font-medium disabled:opacity-70 disabled:cursor-not-allowed"
-          >
-            {isExporting ? (
-              <div className="w-5 h-5 border-2 border-[#1A237E]/30 border-t-[#1A237E] rounded-full animate-spin"></div>
-            ) : (
-              <Download className="w-5 h-5" />
-            )}
-            <span>{isExporting ? 'Mengekspor...' : 'Ekspor Excel'}</span>
-          </button>
           <button className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2.5 bg-[#25D366] text-white rounded-xl hover:bg-[#128C7E] transition-colors font-medium shadow-lg shadow-[#25D366]/20">
             <Send className="w-5 h-5" />
             <span>Kirim Massal WA</span>
