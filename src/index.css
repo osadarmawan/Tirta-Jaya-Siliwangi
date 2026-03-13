@@ -1,0 +1,41 @@
+@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-heading: "Montserrat", ui-sans-serif, system-ui, sans-serif;
+  --color-navy: #1A237E;
+  --color-navy-light: #283593;
+  --color-gold: #D4AF37;
+  --color-gold-light: #F3E5AB;
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: #F4F6F9;
+  color: #1A237E;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-heading);
+}
+
+.glass-card {
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(12px);
+  border-radius: 20px;
+  box-shadow: 0 8px 32px 0 rgba(26, 35, 126, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+}
+
+.glass-nav {
+  background: rgba(26, 35, 126, 0.95);
+  backdrop-filter: blur(10px);
+  border-top: 1px solid rgba(212, 175, 55, 0.3);
+}
+
+.glass-sidebar {
+  background: rgba(26, 35, 126, 0.98);
+  backdrop-filter: blur(10px);
+  border-right: 1px solid rgba(212, 175, 55, 0.3);
+}
