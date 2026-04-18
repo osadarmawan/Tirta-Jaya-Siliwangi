@@ -3,17 +3,20 @@ import {
   Settings, Droplet, Users, Bell, Shield, CreditCard, Save, 
   Smartphone, Key, Lock, LogOut, Plus, Edit2, Trash2, CheckCircle2, 
   XCircle, Upload, Server, Download, X, Building, FileSpreadsheet, UploadCloud,
-  Loader2
+  Loader2, Send
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import * as XLSX from 'xlsx';
 import CurrencyInput from '../components/CurrencyInput';
 import { useSettings } from '../context/SettingsContext';
 
+import { useData } from '../context/DataContext';
+
 type TabType = 'profile' | 'tarif' | 'notif' | 'users' | 'payment' | 'security';
 
 export default function SettingsView() {
   const { settings, updateSettings } = useSettings();
+  const { customers, history, notifications } = useData();
   const [activeTab, setActiveTab] = useState<TabType>('profile');
   const [bankAccounts, setBankAccounts] = useState([
     { id: 1, bank: 'BCA', number: '8732 1100 2938', name: `Paguyuban ${settings.appName}`, colorText: 'text-blue-800', colorBg: 'bg-blue-500/5' },
@@ -39,6 +42,135 @@ export default function SettingsView() {
     phone: settings.phone,
   });
 
+  const [tarifForm, setTarifForm] = useState({
+    useFlatRate: settings.useFlatRate ?? true,
+    flatRateAmount: settings.flatRateAmount || 70000,
+    billingDate: settings.billingDate || 5,
+    gracePeriod: settings.gracePeriod || 5,
+    lateFee: settings.lateFee ?? 0,
+    adminFee: settings.adminFee ?? 0,
+    tariffHousehold: settings.tariffHousehold || 2500,
+    tariffCommercial: settings.tariffCommercial || 4500,
+  });
+
+  const [waForm, setWaForm] = useState({
+    waInstanceId: settings.waInstanceId || 'AQ-882910-WA',
+    waApiToken: settings.waApiToken || (import.meta as any).env.VITE_WA_API_TOKEN || '7b2MQA8Ssu13fdhe1VXG',
+    waAutoReminder: settings.waAutoReminder !== undefined ? settings.waAutoReminder : true,
+    waAutoReminderDays: settings.waAutoReminderDays || 3,
+    waLogRetentionDays: settings.waLogRetentionDays || 30,
+    templateNewBill: settings.templateNewBill || `Halo Bapak/Ibu {{nama_warga}},\n\nBerikut adalah rincian tagihan air ${settings.appName} untuk bulan ini:\nBlok: {{blok}}\nTotal Tagihan: Rp {{total_tagihan}}\nJatuh Tempo: {{jatuh_tempo}}\n\nMohon segera melakukan pembayaran. Terima kasih.`,
+    templatePaymentSuccess: settings.templatePaymentSuccess || `Halo Bapak/Ibu {{nama_warga}},\n\nPembayaran tagihan air untuk Blok {{blok}} sebesar Rp {{total_bayar}} telah kami terima pada {{tanggal_bayar}}.\n\nTerima kasih atas pembayaran Anda yang tepat waktu.`,
+    templateReminder: settings.templateReminder || `Halo Bapak/Ibu {{nama_warga}},\n\nSekadar mengingatkan bahwa tagihan air Anda sebesar Rp {{total_tagihan}} akan jatuh tempo pada {{jatuh_tempo}}.\n\nMohon abaikan pesan ini jika Anda sudah melakukan pembayaran.`
+  });
+
+  const [messageLogs, setMessageLogs] = useState([
+    { id: 1, time: '18 Mar 2026 10:30', to: '081234567890 (Budi)', type: 'Tagihan Baru', status: 'Terkirim' },
+    { id: 2, time: '18 Mar 2026 11:15', to: '089876543210 (Siti)', type: 'Konfirmasi Pembayaran', status: 'Gagal' },
+    { id: 3, time: '17 Mar 2026 09:00', to: '085678901234 (Agus)', type: 'Pengingat Pembayaran', status: 'Terkirim' },
+  ]);
+  const [selectedLogs, setSelectedLogs] = useState<number[]>([]);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [testWaNumber, setTestWaNumber] = useState('');
+  const [testWaMessage, setTestWaMessage] = useState('Halo, ini adalah pesan percobaan dari sistem Tirta Jaya Siliwangi.');
+  const [isTestingWa, setIsTestingWa] = useState(false);
+
+  const handleSyncWA = () => {
+    setIsSyncing(true);
+    // Simulate API call to check WhatsApp connection status
+    setTimeout(() => {
+      setIsSyncing(false);
+      alert('Sinkronisasi berhasil! Koneksi WhatsApp Gateway terhubung dan aktif.');
+    }, 1500);
+  };
+
+  const handleTestWa = async () => {
+    if (!testWaNumber) {
+      alert('Silakan masukkan nomor WhatsApp tujuan.');
+      return;
+    }
+    setIsTestingWa(true);
+    
+    try {
+      // Menggunakan API Fonnte sebagai WhatsApp Gateway default
+      const response = await fetch('https://api.fonnte.com/send', {
+        method: 'POST',
+        headers: {
+          'Authorization': waForm.waApiToken
+        },
+        body: new URLSearchParams({
+          target: testWaNumber,
+          message: testWaMessage,
+          countryCode: '62'
+        })
+      });
+
+      const data = await response.json();
+      
+      if (data.status) {
+        alert(`Pesan percobaan berhasil dikirim ke ${testWaNumber}`);
+        
+        // Add to logs
+        const newLog = {
+          id: Date.now(),
+          time: new Date().toLocaleString('id-ID', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }),
+          to: testWaNumber,
+          type: 'Pesan Percobaan',
+          status: 'Terkirim'
+        };
+        setMessageLogs([newLog, ...messageLogs]);
+        
+        setTestWaNumber('');
+      } else {
+        alert(`Gagal mengirim pesan: ${data.reason || data.detail || 'Token API tidak valid atau kuota habis.'}`);
+        
+        // Add failed log
+        const newLog = {
+          id: Date.now(),
+          time: new Date().toLocaleString('id-ID', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }),
+          to: testWaNumber,
+          type: 'Pesan Percobaan',
+          status: 'Gagal'
+        };
+        setMessageLogs([newLog, ...messageLogs]);
+      }
+    } catch (error) {
+      console.error('Error sending WA:', error);
+      alert('Terjadi kesalahan koneksi ke server WhatsApp Gateway. Pastikan token API benar.');
+    } finally {
+      setIsTestingWa(false);
+    }
+  };
+
+  const handleSelectAllLogs = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.checked) {
+      setSelectedLogs(messageLogs.map(log => log.id));
+    } else {
+      setSelectedLogs([]);
+    }
+  };
+
+  const handleSelectLog = (id: number) => {
+    setSelectedLogs(prev => 
+      prev.includes(id) ? prev.filter(logId => logId !== id) : [...prev, id]
+    );
+  };
+
+  const handleDeleteSelectedLogs = () => {
+    if (selectedLogs.length === 0) return;
+    if (window.confirm(`Apakah Anda yakin ingin menghapus ${selectedLogs.length} log pesan?`)) {
+      setMessageLogs(logs => logs.filter(log => !selectedLogs.includes(log.id)));
+      setSelectedLogs([]);
+    }
+  };
+
+  const handleResendMessage = (id: number) => {
+    setMessageLogs(logs => logs.map(log => 
+      log.id === id ? { ...log, status: 'Terkirim', time: new Date().toLocaleString('id-ID', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) } : log
+    ));
+    alert('Pesan sedang dikirim ulang...');
+  };
+
   const handleProfileChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
     setProfileForm(prev => ({ ...prev, [name]: value }));
@@ -47,6 +179,16 @@ export default function SettingsView() {
   const handleSaveProfile = () => {
     updateSettings(profileForm);
     alert('Profil berhasil disimpan!');
+  };
+
+  const handleSaveTarif = () => {
+    updateSettings(tarifForm);
+    alert('Pengaturan tarif berhasil diperbarui!');
+  };
+
+  const handleSaveWa = () => {
+    updateSettings(waForm);
+    alert('Pengaturan WhatsApp berhasil diperbarui!');
   };
 
   // User Management State
@@ -87,43 +229,67 @@ export default function SettingsView() {
   const [isExporting, setIsExporting] = useState<string | null>(null);
   const [isImporting, setIsImporting] = useState<string | null>(null);
 
-  const handleExportData = (type: 'tagihan' | 'warga' | 'catatan') => {
+  const handleExportData = (type: 'tagihan' | 'warga' | 'catatan' | 'full') => {
     setIsExporting(type);
     
     setTimeout(() => {
-      let data: any[] = [];
-      let fileName = '';
-      let sheetName = '';
+      const wb = XLSX.utils.book_new();
+      const dateStr = new Date().toISOString().split('T')[0];
+      let fileName = `Backup_${settings.appName}_${dateStr}.xls`;
 
-      if (type === 'tagihan') {
-        data = [
-          { id: 'INV-2603-001', name: 'Budi Santoso', block: 'A-01', amount: 125000, status: 'Lunas', date: '05 Mar 2026' },
-          { id: 'INV-2603-002', name: 'Siti Aminah', block: 'A-02', amount: 95000, status: 'Belum Bayar', date: '05 Mar 2026' },
-          { id: 'INV-2603-003', name: 'Toko Makmur', block: 'B-01', amount: 450000, status: 'Terlambat', date: '05 Mar 2026' },
-        ];
-        fileName = `Backup_Tagihan_${new Date().toISOString().split('T')[0]}.xlsx`;
-        sheetName = 'Tagihan';
-      } else if (type === 'warga') {
-        data = [
-          { id: 1, name: 'Budi Santoso', block: 'A-01', phone: '081234567890', status: 'Aktif' },
-          { id: 2, name: 'Siti Aminah', block: 'A-02', phone: '081234567891', status: 'Aktif' },
-          { id: 3, name: 'Ahmad Dahlan', block: 'C-12', phone: '081234567892', status: 'Non-Aktif' },
-        ];
-        fileName = `Backup_Data_Warga_${new Date().toISOString().split('T')[0]}.xlsx`;
-        sheetName = 'Data Warga';
-      } else if (type === 'catatan') {
-        data = [
-          { date: '2026-03-01', block: 'A-01', lastMeter: 120, currentMeter: 145, usage: 25 },
-          { date: '2026-03-01', block: 'A-02', lastMeter: 85, currentMeter: 102, usage: 17 },
-        ];
-        fileName = `Backup_Catatan_Meter_${new Date().toISOString().split('T')[0]}.xlsx`;
-        sheetName = 'Catatan Meter';
+      if (type === 'tagihan' || type === 'full') {
+        const allBilling: any[] = [];
+        Object.keys(history).forEach(custId => {
+          const customer = customers.find(c => c.id === custId);
+          history[custId].forEach(record => {
+            allBilling.push({
+              'ID Tagihan': record.id,
+              'Nama Warga': customer?.name || 'Unknown',
+              'Blok': customer?.block || 'Unknown',
+              'Periode': record.period,
+              'Meter Awal': record.startMeter,
+              'Meter Akhir': record.endMeter,
+              'Pemakaian': record.usage,
+              'Total Tagihan': record.amount,
+              'Status': record.status,
+              'Tanggal': record.date
+            });
+          });
+        });
+        const ws = XLSX.utils.json_to_sheet(allBilling);
+        XLSX.utils.book_append_sheet(wb, ws, 'Tagihan');
+        if (type === 'tagihan') fileName = `Backup_Tagihan_${dateStr}.xls`;
       }
 
-      const ws = XLSX.utils.json_to_sheet(data);
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, sheetName);
-      XLSX.writeFile(wb, fileName);
+      if (type === 'warga' || type === 'full') {
+        const wargaData = customers.map(c => ({
+          'ID': c.id,
+          'Nama': c.name,
+          'Blok': c.block,
+          'Kategori': c.category,
+          'Meter Awal': c.initialMeter,
+          'No. HP': c.phone,
+          'Meter Terakhir': c.lastMeterReading || '-',
+          'Tgl Catat Terakhir': c.lastReadingDate || '-'
+        }));
+        const ws = XLSX.utils.json_to_sheet(wargaData);
+        XLSX.utils.book_append_sheet(wb, ws, 'Data Warga');
+        if (type === 'warga') fileName = `Backup_Warga_${dateStr}.xls`;
+      }
+
+      if (type === 'catatan' || type === 'full') {
+        const catatanData = notifications.map(n => ({
+          'Waktu': n.time,
+          'Tipe': n.type,
+          'Judul': n.title,
+          'Keterangan': n.desc
+        }));
+        const ws = XLSX.utils.json_to_sheet(catatanData);
+        XLSX.utils.book_append_sheet(wb, ws, 'Catatan Sistem');
+        if (type === 'catatan') fileName = `Backup_Catatan_${dateStr}.xls`;
+      }
+
+      XLSX.writeFile(wb, fileName, { bookType: 'xls' });
       setIsExporting(null);
     }, 1500);
   };
@@ -294,29 +460,78 @@ export default function SettingsView() {
         return (
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="space-y-6">
             <div className="glass-card p-6">
-              <h3 className="text-lg font-heading font-bold text-[#1A237E] mb-4 border-b border-gray-100 pb-3">Pengaturan Tarif Air</h3>
-              <div className="space-y-5">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-1.5">Tarif Rumah Tangga (per m³)</label>
-                    <div className="relative">
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 font-medium">Rp</span>
-                      <CurrencyInput defaultValue={2500} className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#D4AF37] focus:border-transparent outline-none transition-all font-mono" />
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-1.5">Tarif Niaga (per m³)</label>
-                    <div className="relative">
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 font-medium">Rp</span>
-                      <CurrencyInput defaultValue={4500} className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#D4AF37] focus:border-transparent outline-none transition-all font-mono" />
-                    </div>
-                  </div>
+              <div className="flex items-center justify-between mb-4 border-b border-gray-100 pb-3">
+                <h3 className="text-lg font-heading font-bold text-[#1A237E]">Pengaturan Tarif Air</h3>
+                <div className="flex items-center gap-3">
+                  <span className="text-sm font-medium text-gray-600">Gunakan Tarif Flat</span>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input 
+                      type="checkbox" 
+                      className="sr-only peer" 
+                      checked={tarifForm.useFlatRate}
+                      onChange={(e) => setTarifForm(prev => ({ ...prev, useFlatRate: e.target.checked }))}
+                    />
+                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#1A237E]"></div>
+                  </label>
                 </div>
+              </div>
+
+              <div className="space-y-5">
+                {tarifForm.useFlatRate ? (
+                  <motion.div 
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: 'auto' }}
+                    className="p-4 bg-blue-50 border border-blue-100 rounded-xl"
+                  >
+                    <label className="block text-sm font-semibold text-[#1A237E] mb-1.5">Besaran Tarif Flat (per Bulan)</label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 font-medium">Rp</span>
+                      <CurrencyInput 
+                        value={tarifForm.flatRateAmount} 
+                        onValueChange={(val) => setTarifForm(prev => ({ ...prev, flatRateAmount: val || 0 }))}
+                        className="w-full pl-10 pr-4 py-2.5 bg-white border border-blue-200 rounded-xl focus:ring-2 focus:ring-[#D4AF37] outline-none transition-all font-mono font-bold text-[#1A237E]" 
+                      />
+                    </div>
+                    <p className="text-xs text-blue-600 mt-2 italic">
+                      * Tarif ini akan berlaku rata untuk semua pemakaian air tanpa menghitung angka meteran.
+                    </p>
+                  </motion.div>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-1.5">Tarif Rumah Tangga (per m³)</label>
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 font-medium">Rp</span>
+                        <CurrencyInput 
+                          value={tarifForm.tariffHousehold}
+                          onValueChange={(val) => setTarifForm(prev => ({ ...prev, tariffHousehold: val || 0 }))}
+                          className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#D4AF37] focus:border-transparent outline-none transition-all font-mono" 
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-1.5">Tarif Niaga (per m³)</label>
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 font-medium">Rp</span>
+                        <CurrencyInput 
+                          value={tarifForm.tariffCommercial}
+                          onValueChange={(val) => setTarifForm(prev => ({ ...prev, tariffCommercial: val || 0 }))}
+                          className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#D4AF37] focus:border-transparent outline-none transition-all font-mono" 
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+                
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-1.5">Biaya Admin Bulanan (Tetap)</label>
                   <div className="relative">
                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 font-medium">Rp</span>
-                    <CurrencyInput defaultValue={15000} className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#D4AF37] focus:border-transparent outline-none transition-all font-mono" />
+                    <CurrencyInput 
+                      value={tarifForm.adminFee}
+                      onValueChange={(val) => setTarifForm(prev => ({ ...prev, adminFee: val || 0 }))}
+                      className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#D4AF37] focus:border-transparent outline-none transition-all font-mono" 
+                    />
                   </div>
                   <p className="text-xs text-gray-500 mt-1.5">Biaya ini akan ditambahkan secara otomatis ke setiap tagihan warga.</p>
                 </div>
@@ -329,25 +544,45 @@ export default function SettingsView() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-semibold text-gray-700 mb-1.5">Tanggal Penagihan</label>
-                    <select className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#D4AF37] focus:border-transparent outline-none transition-all">
-                      <option>Setiap Tanggal 5</option>
-                      <option>Setiap Tanggal 10</option>
-                      <option>Setiap Tanggal 15</option>
+                    <select 
+                      value={tarifForm.billingDate}
+                      onChange={(e) => setTarifForm(prev => ({ ...prev, billingDate: parseInt(e.target.value) }))}
+                      className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#D4AF37] focus:border-transparent outline-none transition-all"
+                    >
+                      <option value={5}>Setiap Tanggal 5</option>
+                      <option value={10}>Setiap Tanggal 10</option>
+                      <option value={15}>Setiap Tanggal 15</option>
                     </select>
                   </div>
                   <div>
                     <label className="block text-sm font-semibold text-gray-700 mb-1.5">Masa Tenggang (Hari)</label>
-                    <input type="number" defaultValue={5} className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#D4AF37] focus:border-transparent outline-none transition-all" />
+                    <input 
+                      type="number" 
+                      value={tarifForm.gracePeriod}
+                      onChange={(e) => setTarifForm(prev => ({ ...prev, gracePeriod: parseInt(e.target.value) || 0 }))}
+                      className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#D4AF37] focus:border-transparent outline-none transition-all" 
+                    />
                   </div>
                 </div>
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-1.5">Denda Keterlambatan (per Bulan)</label>
                   <div className="relative">
                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 font-medium">Rp</span>
-                    <CurrencyInput defaultValue={10000} className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#D4AF37] focus:border-transparent outline-none transition-all font-mono" />
+                    <CurrencyInput 
+                      value={tarifForm.lateFee}
+                      onValueChange={(val) => setTarifForm(prev => ({ ...prev, lateFee: val || 0 }))}
+                      className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#D4AF37] focus:border-transparent outline-none transition-all font-mono" 
+                    />
                   </div>
                 </div>
               </div>
+            </div>
+            
+            <div className="flex justify-end pt-4">
+              <button onClick={handleSaveTarif} className="flex items-center gap-2 px-6 py-2.5 bg-[#1A237E] text-white rounded-xl hover:bg-[#1A237E]/90 transition-colors font-medium shadow-sm">
+                <Save className="w-4 h-4" />
+                Simpan Perubahan
+              </button>
             </div>
           </motion.div>
         );
@@ -366,11 +601,21 @@ export default function SettingsView() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-semibold text-gray-700 mb-1.5">Instance ID</label>
-                    <input type="text" defaultValue="AQ-882910-WA" className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#D4AF37] outline-none font-mono text-sm" />
+                    <input 
+                      type="text" 
+                      value={waForm.waInstanceId}
+                      onChange={(e) => setWaForm(prev => ({ ...prev, waInstanceId: e.target.value }))}
+                      className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#D4AF37] outline-none font-mono text-sm" 
+                    />
                   </div>
                   <div>
                     <label className="block text-sm font-semibold text-gray-700 mb-1.5">API Token</label>
-                    <input type="password" defaultValue="************************" className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#D4AF37] outline-none font-mono text-sm" />
+                    <input 
+                      type="password" 
+                      value={waForm.waApiToken}
+                      onChange={(e) => setWaForm(prev => ({ ...prev, waApiToken: e.target.value }))}
+                      className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#D4AF37] outline-none font-mono text-sm" 
+                    />
                   </div>
                 </div>
                 <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl border border-gray-200">
@@ -378,7 +623,20 @@ export default function SettingsView() {
                     <p className="font-semibold text-gray-800 text-sm">Nomor Pengirim</p>
                     <p className="text-xs text-gray-500">{settings.phone} (Admin {settings.appName})</p>
                   </div>
-                  <button className="px-4 py-2 bg-white border border-gray-200 text-[#1A237E] rounded-lg text-sm font-medium hover:bg-gray-50">Sinkronisasi Ulang</button>
+                  <button 
+                    onClick={handleSyncWA}
+                    disabled={isSyncing}
+                    className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 text-[#1A237E] rounded-lg text-sm font-medium hover:bg-gray-50 disabled:opacity-50"
+                  >
+                    {isSyncing ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Menyinkronkan...
+                      </>
+                    ) : (
+                      'Sinkronisasi Ulang'
+                    )}
+                  </button>
                 </div>
               </div>
             </div>
@@ -388,13 +646,54 @@ export default function SettingsView() {
               <div className="space-y-5">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="font-semibold text-gray-800 text-sm">Kirim Otomatis H-1 Jatuh Tempo</p>
-                    <p className="text-xs text-gray-500">Sistem akan mengirim pesan pengingat sehari sebelum jatuh tempo.</p>
+                    <p className="font-semibold text-gray-800 text-sm">Kirim Otomatis H-{waForm.waAutoReminderDays} Jatuh Tempo</p>
+                    <p className="text-xs text-gray-500">Sistem akan mengirim pesan pengingat {waForm.waAutoReminderDays} hari sebelum jatuh tempo.</p>
                   </div>
-                  <label className="relative inline-flex items-center cursor-pointer">
-                    <input type="checkbox" className="sr-only peer" defaultChecked />
-                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#25D366]"></div>
-                  </label>
+                  <div className="flex items-center gap-4">
+                    {waForm.waAutoReminder && (
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-gray-500">H-</span>
+                        <input 
+                          type="number" 
+                          min="1" 
+                          max="14"
+                          value={waForm.waAutoReminderDays}
+                          onChange={(e) => setWaForm(prev => ({ ...prev, waAutoReminderDays: parseInt(e.target.value) || 1 }))}
+                          className="w-16 px-2 py-1 text-sm border border-gray-200 rounded-md focus:ring-2 focus:ring-[#25D366] outline-none text-center"
+                        />
+                        <span className="text-xs text-gray-500">Hari</span>
+                      </div>
+                    )}
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input 
+                        type="checkbox" 
+                        className="sr-only peer" 
+                        checked={waForm.waAutoReminder}
+                        onChange={(e) => setWaForm(prev => ({ ...prev, waAutoReminder: e.target.checked }))}
+                      />
+                      <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#25D366]"></div>
+                    </label>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="font-semibold text-gray-800 text-sm">Hapus Log Otomatis</p>
+                    <p className="text-xs text-gray-500">Sistem akan menghapus riwayat pesan yang lebih lama dari waktu ini.</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={waForm.waLogRetentionDays}
+                      onChange={(e) => setWaForm(prev => ({ ...prev, waLogRetentionDays: parseInt(e.target.value) }))}
+                      className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-[#25D366] outline-none bg-gray-50 text-gray-700 font-medium"
+                    >
+                      <option value={0}>Jangan Hapus</option>
+                      <option value={7}>7 Hari</option>
+                      <option value={30}>1 Bulan (30 Hari)</option>
+                      <option value={90}>3 Bulan (90 Hari)</option>
+                      <option value={180}>6 Bulan (180 Hari)</option>
+                    </select>
+                  </div>
                 </div>
 
                 <div>
@@ -402,10 +701,163 @@ export default function SettingsView() {
                   <textarea 
                     rows={4} 
                     className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#D4AF37] outline-none text-sm"
-                    defaultValue={`Halo Bapak/Ibu {{nama_warga}},\\n\\nBerikut adalah rincian tagihan air ${settings.appName} untuk bulan ini:\\nBlok: {{blok}}\\nTotal Tagihan: Rp {{total_tagihan}}\\nJatuh Tempo: {{jatuh_tempo}}\\n\\nMohon segera melakukan pembayaran. Terima kasih.`}
+                    value={waForm.templateNewBill}
+                    onChange={(e) => setWaForm(prev => ({ ...prev, templateNewBill: e.target.value }))}
                   />
                   <p className="text-[11px] text-gray-500 mt-1.5">Variabel tersedia: <code className="bg-gray-100 px-1 py-0.5 rounded text-[#1A237E]">{'{{nama_warga}}'}</code>, <code className="bg-gray-100 px-1 py-0.5 rounded text-[#1A237E]">{'{{blok}}'}</code>, <code className="bg-gray-100 px-1 py-0.5 rounded text-[#1A237E]">{'{{total_tagihan}}'}</code>, <code className="bg-gray-100 px-1 py-0.5 rounded text-[#1A237E]">{'{{jatuh_tempo}}'}</code></p>
                 </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1.5">Template Konfirmasi Pembayaran</label>
+                  <textarea 
+                    rows={4} 
+                    className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#D4AF37] outline-none text-sm"
+                    value={waForm.templatePaymentSuccess}
+                    onChange={(e) => setWaForm(prev => ({ ...prev, templatePaymentSuccess: e.target.value }))}
+                  />
+                  <p className="text-[11px] text-gray-500 mt-1.5">Variabel tersedia: <code className="bg-gray-100 px-1 py-0.5 rounded text-[#1A237E]">{'{{nama_warga}}'}</code>, <code className="bg-gray-100 px-1 py-0.5 rounded text-[#1A237E]">{'{{blok}}'}</code>, <code className="bg-gray-100 px-1 py-0.5 rounded text-[#1A237E]">{'{{total_bayar}}'}</code>, <code className="bg-gray-100 px-1 py-0.5 rounded text-[#1A237E]">{'{{tanggal_bayar}}'}</code></p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1.5">Template Pengingat Pembayaran</label>
+                  <textarea 
+                    rows={4} 
+                    className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#D4AF37] outline-none text-sm"
+                    value={waForm.templateReminder}
+                    onChange={(e) => setWaForm(prev => ({ ...prev, templateReminder: e.target.value }))}
+                  />
+                  <p className="text-[11px] text-gray-500 mt-1.5">Variabel tersedia: <code className="bg-gray-100 px-1 py-0.5 rounded text-[#1A237E]">{'{{nama_warga}}'}</code>, <code className="bg-gray-100 px-1 py-0.5 rounded text-[#1A237E]">{'{{total_tagihan}}'}</code>, <code className="bg-gray-100 px-1 py-0.5 rounded text-[#1A237E]">{'{{jatuh_tempo}}'}</code></p>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-end pt-4">
+              <button onClick={handleSaveWa} className="flex items-center gap-2 px-6 py-2.5 bg-[#1A237E] text-white rounded-xl hover:bg-[#1A237E]/90 transition-colors font-medium shadow-sm">
+                <Save className="w-4 h-4" />
+                Simpan Perubahan
+              </button>
+            </div>
+
+            <div className="glass-card p-6">
+              <h3 className="text-lg font-heading font-bold text-[#1A237E] mb-4 border-b border-gray-100 pb-3">Test Kirim Pesan</h3>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1.5">Nomor Tujuan (WhatsApp)</label>
+                  <input
+                    type="text"
+                    placeholder="Contoh: 081234567890"
+                    value={testWaNumber}
+                    onChange={(e) => setTestWaNumber(e.target.value)}
+                    className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#25D366] outline-none transition-all"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1.5">Pesan Percobaan</label>
+                  <textarea
+                    rows={3}
+                    value={testWaMessage}
+                    onChange={(e) => setTestWaMessage(e.target.value)}
+                    className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#25D366] outline-none transition-all resize-none"
+                  ></textarea>
+                </div>
+                <button
+                  onClick={handleTestWa}
+                  disabled={isTestingWa}
+                  className="px-6 py-2.5 bg-[#25D366] text-white rounded-xl text-sm font-medium hover:bg-[#128C7E] transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed w-fit"
+                >
+                  {isTestingWa ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Mengirim...
+                    </>
+                  ) : (
+                    <>
+                      <Send className="w-4 h-4" />
+                      Kirim Pesan Test
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+
+            <div className="glass-card p-6">
+              <div className="flex justify-between items-center mb-4 border-b border-gray-100 pb-3">
+                <h3 className="text-lg font-heading font-bold text-[#1A237E]">Log & Riwayat Pesan</h3>
+                {selectedLogs.length > 0 && (
+                  <button 
+                    onClick={handleDeleteSelectedLogs}
+                    className="flex items-center gap-2 px-4 py-2 bg-red-50 text-red-600 rounded-lg text-sm font-medium hover:bg-red-100 transition-colors border border-red-200"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    Hapus Terpilih ({selectedLogs.length})
+                  </button>
+                )}
+              </div>
+              
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-gray-50/50 border-y border-gray-100">
+                      <th className="p-3 w-10">
+                        <input 
+                          type="checkbox" 
+                          className="rounded border-gray-300 text-[#1A237E] focus:ring-[#1A237E]"
+                          checked={messageLogs.length > 0 && selectedLogs.length === messageLogs.length}
+                          onChange={handleSelectAllLogs}
+                        />
+                      </th>
+                      <th className="p-3 text-xs font-semibold text-gray-500 uppercase">Waktu</th>
+                      <th className="p-3 text-xs font-semibold text-gray-500 uppercase">Tujuan</th>
+                      <th className="p-3 text-xs font-semibold text-gray-500 uppercase">Jenis Pesan</th>
+                      <th className="p-3 text-xs font-semibold text-gray-500 uppercase">Status</th>
+                      <th className="p-3 text-xs font-semibold text-gray-500 uppercase text-right">Aksi</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {messageLogs.length === 0 ? (
+                      <tr>
+                        <td colSpan={6} className="p-8 text-center text-gray-500 text-sm">
+                          Belum ada log pengiriman pesan.
+                        </td>
+                      </tr>
+                    ) : (
+                      messageLogs.map((log) => (
+                        <tr key={log.id} className="hover:bg-gray-50/50 transition-colors">
+                          <td className="p-3">
+                            <input 
+                              type="checkbox" 
+                              className="rounded border-gray-300 text-[#1A237E] focus:ring-[#1A237E]"
+                              checked={selectedLogs.includes(log.id)}
+                              onChange={() => handleSelectLog(log.id)}
+                            />
+                          </td>
+                          <td className="p-3 text-sm text-gray-600">{log.time}</td>
+                          <td className="p-3 text-sm font-medium text-gray-800">{log.to}</td>
+                          <td className="p-3 text-sm text-gray-600">{log.type}</td>
+                          <td className="p-3">
+                            <span className={`inline-block px-2.5 py-1 rounded-md text-[10px] font-semibold uppercase tracking-wider ${
+                              log.status === 'Terkirim' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                            }`}>
+                              {log.status}
+                            </span>
+                          </td>
+                          <td className="p-3 text-right">
+                            {log.status === 'Gagal' || log.type === 'Konfirmasi Pembayaran' ? (
+                              <button 
+                                onClick={() => handleResendMessage(log.id)}
+                                className="text-xs font-medium text-[#1A237E] hover:underline"
+                              >
+                                Kirim Ulang
+                              </button>
+                            ) : (
+                              <span className="text-xs text-gray-400">-</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
               </div>
             </div>
           </motion.div>
@@ -629,15 +1081,20 @@ export default function SettingsView() {
               <div className="space-y-6">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    <div className="p-2 bg-blue-50 text-blue-600 rounded-lg"><Key className="w-5 h-5" /></div>
+                    <div className="p-2 bg-green-50 text-[#25D366] rounded-lg"><Key className="w-5 h-5" /></div>
                     <div>
-                      <p className="font-semibold text-gray-800 text-sm">Autentikasi Dua Langkah (2FA)</p>
-                      <p className="text-xs text-gray-500">Gunakan OTP via Email saat login di perangkat baru.</p>
+                      <p className="font-semibold text-gray-800 text-sm">Autentikasi Dua Langkah (WhatsApp OTP)</p>
+                      <p className="text-xs text-gray-500">Gunakan OTP via WhatsApp saat login di perangkat baru.</p>
                     </div>
                   </div>
                   <label className="relative inline-flex items-center cursor-pointer">
-                    <input type="checkbox" className="sr-only peer" />
-                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#1A237E]"></div>
+                    <input 
+                      type="checkbox" 
+                      className="sr-only peer" 
+                      checked={settings.waOtpEnabled}
+                      onChange={(e) => updateSettings({ waOtpEnabled: e.target.checked })}
+                    />
+                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#25D366]"></div>
                   </label>
                 </div>
 
@@ -663,9 +1120,19 @@ export default function SettingsView() {
             </div>
 
             <div className="glass-card p-6">
-              <div className="mb-6">
-                <h3 className="text-lg font-heading font-bold text-[#1A237E]">Backup Database</h3>
-                <p className="text-sm text-gray-500 mt-1">Kelola ekspor dan impor data sistem dalam format Excel (.xls).</p>
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+                <div>
+                  <h3 className="text-lg font-heading font-bold text-[#1A237E]">Backup Database</h3>
+                  <p className="text-sm text-gray-500 mt-1">Kelola ekspor dan impor data sistem dalam format Excel (.xls).</p>
+                </div>
+                <button 
+                  onClick={() => handleExportData('full')}
+                  disabled={!!isExporting}
+                  className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-3 bg-gradient-to-r from-[#D4AF37] to-[#F3E5AB] text-[#1A237E] rounded-xl font-bold shadow-lg hover:shadow-xl transition-all disabled:opacity-50"
+                >
+                  {isExporting === 'full' ? <Loader2 className="w-5 h-5 animate-spin" /> : <Download className="w-5 h-5" />}
+                  Backup Seluruh Database (.xls)
+                </button>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -784,15 +1251,6 @@ export default function SettingsView() {
           <AnimatePresence mode="wait">
             {renderContent()}
           </AnimatePresence>
-
-          {activeTab === 'tarif' && (
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex justify-end pt-6">
-              <button className="flex items-center gap-2 px-6 py-3 bg-[#1A237E] text-white rounded-xl font-medium shadow-lg shadow-[#1A237E]/20 hover:bg-[#283593] transition-colors">
-                <Save className="w-5 h-5" />
-                Simpan Perubahan
-              </button>
-            </motion.div>
-          )}
         </div>
       </div>
 

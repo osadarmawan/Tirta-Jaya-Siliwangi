@@ -1,23 +1,17 @@
 import React, { useState } from 'react';
 import { 
   CheckCircle2, AlertTriangle, AlertCircle, Info, 
-  Check, Search, Filter, Trash2, MoreVertical, Bell
+  Check, Search, Trash2, MoreVertical, Bell
 } from 'lucide-react';
 import { motion } from 'motion/react';
+import { useData } from '../context/DataContext';
 
-export default function NotificationsView({ notifications, setNotifications }: any) {
+export default function NotificationsView() {
+  const { notifications, markAllAsRead, deleteNotification, clearAllNotifications } = useData();
   const [activeTab, setActiveTab] = useState('Semua');
   const [searchTerm, setSearchTerm] = useState('');
 
   const tabs = ['Semua', 'Belum Dibaca', 'Pembayaran', 'Sistem', 'Peringatan'];
-
-  const markAllAsRead = () => {
-    setNotifications(notifications.map((n: any) => ({ ...n, unread: false })));
-  };
-
-  const deleteNotification = (id: number) => {
-    setNotifications(notifications.filter((n: any) => n.id !== id));
-  };
 
   // Filter logic
   const filteredNotifications = notifications.filter((notif: any) => {
@@ -46,13 +40,22 @@ export default function NotificationsView({ notifications, setNotifications }: a
           </h2>
           <p className="text-gray-500 mt-1">Kelola dan lihat semua riwayat aktivitas sistem.</p>
         </div>
-        <button 
-          onClick={markAllAsRead}
-          className="flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-200 text-[#1A237E] rounded-xl hover:bg-gray-50 transition-colors font-medium shadow-sm"
-        >
-          <Check className="w-5 h-5 text-[#D4AF37]" />
-          <span>Tandai Semua Dibaca</span>
-        </button>
+        <div className="flex gap-2">
+          <button 
+            onClick={markAllAsRead}
+            className="flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-200 text-[#1A237E] rounded-xl hover:bg-gray-50 transition-colors font-medium shadow-sm"
+          >
+            <Check className="w-5 h-5 text-[#D4AF37]" />
+            <span className="hidden sm:inline">Tandai Semua Dibaca</span>
+          </button>
+          <button 
+            onClick={clearAllNotifications}
+            className="flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-200 text-red-600 rounded-xl hover:bg-red-50 transition-colors font-medium shadow-sm"
+          >
+            <Trash2 className="w-5 h-5" />
+            <span className="hidden sm:inline">Hapus Semua</span>
+          </button>
+        </div>
       </div>
 
       {/* Filters & Search */}

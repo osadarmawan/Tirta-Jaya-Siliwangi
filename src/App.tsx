@@ -21,6 +21,8 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
+import { BrowserRouter, Routes, Route, useNavigate } from 'react-router-dom';
+
 // Mock Views
 import Dashboard from './views/Dashboard';
 import Customers from './views/Customers';
@@ -28,41 +30,93 @@ import MeterReading from './views/MeterReading';
 import Billing from './views/Billing';
 import SettingsView from './views/SettingsView';
 import NotificationsView from './views/NotificationsView';
-import { useSettings } from './context/SettingsContext';
+import InvoiceView from './views/InvoiceView';
+import LoginView from './views/LoginView';
+import { SettingsProvider, useSettings } from './context/SettingsContext';
+import { DataProvider, useData } from './context/DataContext';
+import { LogOut } from 'lucide-react';
 
 type ViewType = 'dashboard' | 'customers' | 'meter' | 'billing' | 'settings' | 'notifications';
 
 export default function App() {
+  return (
+    <BrowserRouter>
+      <SettingsProvider>
+        <DataProvider>
+          <Routes>
+            <Route path="/login" element={<LoginView />} />
+            <Route path="/invoice/:id" element={<InvoiceView />} />
+            <Route path="*" element={<AppContent />} />
+          </Routes>
+        </DataProvider>
+      </SettingsProvider>
+    </BrowserRouter>
+  );
+}
+
+function AppContent() {
   const { settings } = useSettings();
+  const { notifications, markAllAsRead } = useData();
   const [currentView, setCurrentView] = useState<ViewType>('dashboard');
   const [showNotifications, setShowNotifications] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    const checkAuth = async () => {
+      try {
+        const response = await fetch('/api/auth/me');
+        if (response.ok) {
+          setIsAuthenticated(true);
+        } else {
+          setIsAuthenticated(false);
+          if (window.location.pathname !== '/login' && !window.location.pathname.startsWith('/invoice/')) {
+            navigate('/login');
+          }
+        }
+      } catch (err) {
+        setIsAuthenticated(false);
+      }
+    };
+    checkAuth();
+  }, [navigate]);
 
   useEffect(() => {
     document.title = `${settings.appName} - Meter Mandiri`;
   }, [settings.appName]);
 
-  const [notifications, setNotifications] = useState([
-    { id: 1, type: 'success', title: 'Pembayaran Diterima', desc: 'Budi Santoso (A-01) telah membayar tagihan Rp 125.000.', time: '2 menit lalu', unread: true },
-    { id: 2, type: 'warning', title: 'Jatuh Tempo Mendekat', desc: '5 warga belum membayar tagihan bulan ini.', time: '1 jam lalu', unread: true },
-    { id: 3, type: 'info', title: 'Pencatatan Selesai', desc: 'Blok A telah selesai dicatat oleh Petugas Joko.', time: 'Kemarin', unread: false },
-    { id: 4, type: 'error', title: 'Meteran Anomali', desc: 'Penggunaan air Blok C-12 melonjak 300%.', time: '2 hari lalu', unread: false },
-  ]);
+  const handleLogout = async () => {
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+      window.location.href = '/login';
+    } catch (err) {
+      console.error('Logout failed', err);
+    }
+  };
+
+  if (isAuthenticated === null) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#F4F6F9]">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#1A237E]"></div>
+      </div>
+    );
+  }
+
+  if (isAuthenticated === false) {
+    return null; // Will be redirected by useEffect
+  }
 
   const unreadCount = notifications.filter(n => n.unread).length;
 
-  const markAllAsRead = () => {
-    setNotifications(notifications.map(n => ({ ...n, unread: false })));
-  };
-
   const renderView = () => {
     switch (currentView) {
-      case 'dashboard': return <Dashboard />;
+      case 'dashboard': return <Dashboard onViewChange={setCurrentView} />;
       case 'customers': return <Customers />;
       case 'meter': return <MeterReading />;
       case 'billing': return <Billing />;
       case 'settings': return <SettingsView />;
-      case 'notifications': return <NotificationsView notifications={notifications} setNotifications={setNotifications} />;
-      default: return <Dashboard />;
+      case 'notifications': return <NotificationsView />;
+      default: return <Dashboard onViewChange={setCurrentView} />;
     }
   };
 
@@ -110,14 +164,23 @@ export default function App() {
         </nav>
 
         <div className="p-4 border-t border-[rgba(212,175,55,0.2)]">
-          <div className="flex items-center gap-3 px-4 py-3">
-            <div className="w-8 h-8 rounded-full bg-gradient-to-r from-[#D4AF37] to-[#F3E5AB] flex items-center justify-center text-[#1A237E] font-bold text-sm">
-              A
+          <div className="flex items-center justify-between gap-3 px-4 py-3">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-full bg-gradient-to-r from-[#D4AF37] to-[#F3E5AB] flex items-center justify-center text-[#1A237E] font-bold text-sm">
+                A
+              </div>
+              <div className="text-left">
+                <p className="text-sm font-medium text-white">Admin</p>
+                <p className="text-[10px] text-gray-400">Pengurus</p>
+              </div>
             </div>
-            <div className="text-left">
-              <p className="text-sm font-medium text-white">Admin Pengurus</p>
-              <p className="text-xs text-gray-400">admin@aquasmart.id</p>
-            </div>
+            <button 
+              onClick={handleLogout}
+              className="p-2 text-gray-400 hover:text-red-400 transition-colors"
+              title="Keluar"
+            >
+              <LogOut className="w-5 h-5" />
+            </button>
           </div>
         </div>
       </aside>
@@ -140,6 +203,14 @@ export default function App() {
           </div>
 
           <div className="flex items-center gap-4">
+            {/* Logout Button (Mobile) */}
+            <button 
+              onClick={handleLogout}
+              className="md:hidden p-2 text-[#1A237E] hover:bg-white rounded-full transition-colors"
+            >
+              <LogOut className="w-5 h-5" />
+            </button>
+
             {/* Notification Bell & Dropdown */}
             <div className="relative">
               <button 
